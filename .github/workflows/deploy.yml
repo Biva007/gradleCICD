@@ -13,6 +13,9 @@ env:
 jobs:
   build-test-scan:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: 02-java-gradle-springboot
     steps:
       - uses: actions/checkout@v4
 
