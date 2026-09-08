@@ -1,15 +1,19 @@
+name: CI-CD
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  packages: write
 env:
   IMAGE_NAME_RAW: ghcr.io/${{ secrets.GHCR_USER }}/springboot-app
-
 jobs:
   build-test-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set lowercase image name
         run: echo "IMAGE_NAME=$(echo $IMAGE_NAME_RAW | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
       - uses: actions/setup-java@v5
         with:
           java-version: '17'
@@ -41,3 +45,21 @@ jobs:
           docker push $IMAGE_NAME:${{ github.sha }}
           docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
           docker push $IMAGE_NAME:latest
+
+  deploy:
+    needs: build-test-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ secrets.GHCR_USER }} --password-stdin
+            docker pull ${{ env.IMAGE_NAME }}:latest
+            docker stop app || true
+            docker rm app || true
+            docker run -d --name app --restart unless-stopped \
+              -p 8080:8080 ${{ env.IMAGE_NAME }}:latest
